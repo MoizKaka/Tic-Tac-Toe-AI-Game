@@ -53,6 +53,8 @@ export interface GameStateSnapshot {
 
 export interface PlayerStreak {
   userId: string;
+  displayName?: string | null;
+  photoURL?: string | null;
   currentStreak: number;
   bestStreak: number;
   totalWins: number;

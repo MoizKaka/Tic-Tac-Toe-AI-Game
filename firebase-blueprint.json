@@ -117,6 +117,16 @@
           "maxLength": 128,
           "description": "Player UID"
         },
+        "displayName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Player display name"
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Player avatar image URL"
+        },
         "currentStreak": {
           "type": "number",
           "description": "Current consecutive win streak count"

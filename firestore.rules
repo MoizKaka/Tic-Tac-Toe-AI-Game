@@ -69,9 +69,9 @@ service cloud.firestore {
       }
     }
 
-    // Streaks collection
+    // Streaks collection (Leaderboard queries and individual streak records)
     match /streaks/{userId} {
-      allow read: if isValidId(userId);
+      allow get, list: if true;
       allow create, update: if isValidId(userId) && isValidStreak(request.resource.data);
       allow delete: if request.auth != null && request.auth.uid == userId;
     }

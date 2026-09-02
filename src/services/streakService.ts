@@ -2,6 +2,11 @@ import {
   doc,
   getDoc,
   setDoc,
+  collection,
+  query,
+  orderBy,
+  limit,
+  getDocs,
   onSnapshot,
   Unsubscribe,
 } from 'firebase/firestore';
@@ -22,6 +27,8 @@ function getLocalFallback(userId: string): PlayerStreak {
   }
   return {
     userId,
+    displayName: userId.startsWith('guest_') ? 'Guest Player' : 'Player',
+    photoURL: null,
     currentStreak: 0,
     bestStreak: 0,
     totalWins: 0,
@@ -36,6 +43,43 @@ function saveLocalFallback(streak: PlayerStreak): void {
     localStorage.setItem(`${LOCAL_STORAGE_PREFIX}${streak.userId}`, JSON.stringify(streak));
   } catch {
     // Ignore storage write errors
+  }
+}
+
+/**
+ * Ensures player streak record has latest display name and avatar.
+ */
+export async function syncStreakPlayerInfo(
+  userId: string,
+  playerInfo: { displayName?: string | null; photoURL?: string | null }
+): Promise<void> {
+  if (!userId) return;
+
+  const path = `streaks/${userId}`;
+  const streakRef = doc(db, 'streaks', userId);
+
+  try {
+    const snap = await getDoc(streakRef);
+    if (snap.exists()) {
+      const data = snap.data() as PlayerStreak;
+      const needsUpdate =
+        (playerInfo.displayName && data.displayName !== playerInfo.displayName) ||
+        (playerInfo.photoURL && data.photoURL !== playerInfo.photoURL);
+
+      if (needsUpdate) {
+        await setDoc(
+          streakRef,
+          {
+            displayName: playerInfo.displayName || data.displayName || 'Player',
+            photoURL: playerInfo.photoURL ?? data.photoURL ?? null,
+            updatedAt: Date.now(),
+          },
+          { merge: true }
+        );
+      }
+    }
+  } catch (error) {
+    console.warn(`Could not sync player info to streak (${path}):`, error);
   }
 }
 
@@ -60,6 +104,8 @@ export async function getPlayerStreak(userId: string): Promise<PlayerStreak> {
 
     const defaultStreak: PlayerStreak = {
       userId,
+      displayName: userId.startsWith('guest_') ? 'Guest Player' : 'Player',
+      photoURL: null,
       currentStreak: 0,
       bestStreak: 0,
       totalWins: 0,
@@ -120,7 +166,8 @@ export function subscribeToPlayerStreak(
 export async function recordGameOutcome(
   userId: string,
   gameSignature: string,
-  outcome: 'win' | 'loss' | 'draw'
+  outcome: 'win' | 'loss' | 'draw',
+  playerInfo?: { displayName?: string | null; photoURL?: string | null }
 ): Promise<PlayerStreak> {
   if (!userId) return getLocalFallback('anonymous');
 
@@ -163,6 +210,11 @@ export async function recordGameOutcome(
 
   const updatedStreak: PlayerStreak = {
     userId,
+    displayName:
+      playerInfo?.displayName ||
+      currentData.displayName ||
+      (userId.startsWith('guest_') ? 'Guest Player' : 'Player'),
+    photoURL: playerInfo?.photoURL ?? currentData.photoURL ?? null,
     currentStreak: nextCurrentStreak,
     bestStreak: nextBestStreak,
     totalWins: nextTotalWins,
@@ -182,4 +234,70 @@ export async function recordGameOutcome(
   }
 
   return updatedStreak;
+}
+
+/**
+ * Queries Firestore for users with the highest win streaks.
+ */
+export async function getTopStreaks(
+  maxCount: number = 10,
+  sortBy: 'currentStreak' | 'bestStreak' = 'currentStreak'
+): Promise<PlayerStreak[]> {
+  const path = 'streaks';
+  try {
+    const streaksQuery = query(
+      collection(db, 'streaks'),
+      orderBy(sortBy, 'desc'),
+      limit(maxCount)
+    );
+
+    const snapshot = await getDocs(streaksQuery);
+    const results: PlayerStreak[] = [];
+
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data() as PlayerStreak;
+      results.push(data);
+    });
+
+    return results;
+  } catch (error) {
+    console.warn('Error fetching top streaks from Firestore:', error);
+    return [];
+  }
+}
+
+/**
+ * Real-time subscription to the top players leaderboard in Firestore.
+ */
+export function subscribeToTopStreaks(
+  callback: (streaks: PlayerStreak[]) => void,
+  maxCount: number = 10,
+  sortBy: 'currentStreak' | 'bestStreak' = 'currentStreak'
+): Unsubscribe {
+  const path = 'streaks';
+  try {
+    const streaksQuery = query(
+      collection(db, 'streaks'),
+      orderBy(sortBy, 'desc'),
+      limit(maxCount)
+    );
+
+    return onSnapshot(
+      streaksQuery,
+      (snapshot) => {
+        const results: PlayerStreak[] = [];
+        snapshot.forEach((docSnap) => {
+          results.push(docSnap.data() as PlayerStreak);
+        });
+        callback(results);
+      },
+      (error) => {
+        console.warn('Leaderboard subscription error on streaks collection:', error);
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
+    );
+  } catch (error) {
+    console.warn('Failed to attach leaderboard listener:', error);
+    return () => {};
+  }
 }
