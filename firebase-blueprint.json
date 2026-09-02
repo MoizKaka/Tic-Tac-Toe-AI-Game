@@ -1,0 +1,207 @@
+{
+  "entities": {
+    "Game": {
+      "title": "Game",
+      "description": "Represents a Tic-Tac-Toe match session",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Unique Firestore document ID for the game"
+        },
+        "code": {
+          "type": "string",
+          "maxLength": 10,
+          "description": "Short 6-character room code for multiplayer sharing"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["ai", "multiplayer"],
+          "description": "Game mode: vs AI Minimax or 2-player multiplayer"
+        },
+        "aiDifficulty": {
+          "type": "string",
+          "enum": ["easy", "medium", "hard"],
+          "description": "Difficulty level for AI minimax algorithm"
+        },
+        "playerX": {
+          "type": "object",
+          "description": "Player assigned to mark X (host)"
+        },
+        "playerO": {
+          "type": "object",
+          "description": "Player assigned to mark O (guest or AI bot)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["waiting", "in_progress", "completed", "abandoned"],
+          "description": "Current status of the match"
+        },
+        "winner": {
+          "type": "string",
+          "description": "Result of the game: X, O, draw, or null"
+        },
+        "currentTurn": {
+          "type": "string",
+          "enum": ["X", "O"],
+          "description": "Current player turn"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Unix timestamp in milliseconds when game was created"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Unix timestamp in milliseconds when game was last modified"
+        }
+      },
+      "required": ["id", "code", "mode", "playerX", "status", "currentTurn", "createdAt", "updatedAt"]
+    },
+    "GameEvent": {
+      "title": "GameEvent",
+      "description": "An immutable turn event or state rollback in the event-sourced log",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Event document ID"
+        },
+        "turnNumber": {
+          "type": "number",
+          "description": "Sequential turn count"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["MOVE", "ROLLBACK", "NEW_GAME"],
+          "description": "Type of event"
+        },
+        "player": {
+          "type": "string",
+          "enum": ["X", "O"],
+          "description": "Player mark making the move or triggering the event"
+        },
+        "position": {
+          "type": "number",
+          "description": "Board cell index (0-8) or -1 for system events"
+        },
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "UID of the user who initiated the event"
+        },
+        "timestamp": {
+          "type": "number",
+          "description": "Unix timestamp in milliseconds"
+        },
+        "restoredToTurn": {
+          "type": "number",
+          "description": "Target turn number if rolling back state"
+        }
+      },
+      "required": ["turnNumber", "type", "timestamp"]
+    },
+    "PlayerStreak": {
+      "title": "PlayerStreak",
+      "description": "Tracks win streaks and game outcome statistics for a player in Firestore",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Player UID"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Player UID"
+        },
+        "currentStreak": {
+          "type": "number",
+          "description": "Current consecutive win streak count"
+        },
+        "bestStreak": {
+          "type": "number",
+          "description": "All-time highest win streak count"
+        },
+        "totalWins": {
+          "type": "number",
+          "description": "Total number of wins recorded"
+        },
+        "totalLosses": {
+          "type": "number",
+          "description": "Total number of losses recorded"
+        },
+        "totalDraws": {
+          "type": "number",
+          "description": "Total number of draws recorded"
+        },
+        "lastGameId": {
+          "type": "string",
+          "description": "ID and turn signature of the last match processed for streak update"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Unix timestamp in milliseconds of the last update"
+        }
+      },
+      "required": ["userId", "currentStreak", "bestStreak", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with personal preferences and display info",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "User UID matching auth uid"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Player display name"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Player email address if available"
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Player avatar URL if available"
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["light", "dark", "neon"],
+          "description": "Preferred interface theme persisted across devices"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Unix timestamp in milliseconds of last preference update"
+        }
+      },
+      "required": ["userId", "theme", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores user profiles and cross-device preferences such as theme"
+    },
+    "/games/{gameId}": {
+      "schema": "Game",
+      "description": "Stores active and past game sessions"
+    },
+    "/games/{gameId}/events/{eventId}": {
+      "schema": "GameEvent",
+      "description": "Event-sourcing log of all actions taken in a game"
+    },
+    "/streaks/{userId}": {
+      "schema": "PlayerStreak",
+      "description": "Stores player win streaks and outcome statistics"
+    }
+  }
+}

@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    function isValidGame(data) {
+      return data.id is string &&
+             data.code is string &&
+             data.code.size() <= 10 &&
+             data.mode in ['ai', 'multiplayer'] &&
+             data.status in ['waiting', 'in_progress', 'completed', 'abandoned'] &&
+             data.currentTurn in ['X', 'O'] &&
+             data.playerX is map &&
+             data.playerX.uid is string;
+    }
+
+    function isValidEvent(data) {
+      return data.turnNumber is number &&
+             data.type in ['MOVE', 'ROLLBACK', 'NEW_GAME'];
+    }
+
+    function isValidStreak(data) {
+      return data.userId is string &&
+             data.currentStreak is number &&
+             data.bestStreak is number;
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string &&
+             data.userId.size() <= 128 &&
+             data.theme in ['light', 'dark', 'neon'];
+    }
+
+    // User Profiles collection (Cross-device preferences & theme persistence)
+    match /users/{userId} {
+      // Users can only read their own profile (PII protection)
+      allow read: if request.auth != null && request.auth.uid == userId && isValidId(userId);
+      // Users can only create or update their own profile with validated theme
+      allow create, update: if request.auth != null && request.auth.uid == userId && isValidId(userId) && isValidUserProfile(request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Games collection
+    match /games/{gameId} {
+      // Anyone can read games to join via room code or view active game
+      allow read: if isValidId(gameId);
+
+      // Authenticated users and guest players can create games
+      allow create: if isValidId(gameId) && isValidGame(request.resource.data);
+
+      // Players can update state (joining, moves, turn changes)
+      allow update: if isValidId(gameId) && isValidGame(request.resource.data);
+
+      // Host or player X can delete if authenticated
+      allow delete: if request.auth != null && resource != null && resource.data.playerX.uid == request.auth.uid;
+
+      // Event Sourcing subcollection for turns, moves, and rollbacks
+      match /events/{eventId} {
+        allow read: if isValidId(gameId);
+        allow create: if isValidId(gameId) && isValidEvent(request.resource.data);
+        allow update, delete: if false;
+      }
+    }
+
+    // Streaks collection
+    match /streaks/{userId} {
+      allow read: if isValidId(userId);
+      allow create, update: if isValidId(userId) && isValidStreak(request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Connection testing
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
